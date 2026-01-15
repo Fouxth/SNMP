@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { Server, AlertTriangle, Activity, Clock } from 'lucide-react';
-import { getDeviceStats } from '@/lib/mockData';
+import { Server, AlertTriangle, Activity, Clock, Loader2 } from 'lucide-react';
+import { useDevices } from '@/hooks/useDevices';
 import { Progress } from '@/components/ui/progress';
 
 interface KPICardProps {
@@ -8,9 +8,10 @@ interface KPICardProps {
   icon: React.ElementType;
   children: React.ReactNode;
   onClick?: () => void;
+  loading?: boolean;
 }
 
-function KPICard({ title, icon: Icon, children, onClick }: KPICardProps) {
+function KPICard({ title, icon: Icon, children, onClick, loading }: KPICardProps) {
   return (
     <div
       className={`nms-card-glow p-5 animate-fade-in ${onClick ? 'cursor-pointer hover:border-primary/50 transition-colors' : ''}`}
@@ -19,7 +20,11 @@ function KPICard({ title, icon: Icon, children, onClick }: KPICardProps) {
       <div className="flex items-center justify-between mb-4">
         <span className="text-sm text-muted-foreground font-medium">{title}</span>
         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Icon className="w-5 h-5 text-primary" />
+          {loading ? (
+            <Loader2 className="w-5 h-5 text-primary animate-spin" />
+          ) : (
+            <Icon className="w-5 h-5 text-primary" />
+          )}
         </div>
       </div>
       {children}
@@ -29,13 +34,13 @@ function KPICard({ title, icon: Icon, children, onClick }: KPICardProps) {
 
 export function KPICards() {
   const navigate = useNavigate();
-  const stats = getDeviceStats();
-  const upPercentage = Math.round((stats.online / stats.total) * 100);
+  const { stats, loading } = useDevices();
+  const upPercentage = stats.total > 0 ? Math.round((stats.online / stats.total) * 100) : 0;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       {/* Total Devices */}
-      <KPICard title="Total Devices" icon={Server} onClick={() => navigate('/devices')}>
+      <KPICard title="Total Devices" icon={Server} onClick={() => navigate('/devices')} loading={loading}>
         <div className="flex items-baseline gap-2">
           <span className="text-4xl font-bold font-mono">{stats.total}</span>
           <span className="text-sm text-muted-foreground">monitored</span>
@@ -43,7 +48,7 @@ export function KPICards() {
       </KPICard>
 
       {/* Status Overview */}
-      <KPICard title="Status Overview" icon={Activity} onClick={() => navigate('/devices')}>
+      <KPICard title="Status Overview" icon={Activity} onClick={() => navigate('/devices')} loading={loading}>
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
@@ -67,7 +72,7 @@ export function KPICards() {
       </KPICard>
 
       {/* Active Alerts */}
-      <KPICard title="Active Alerts" icon={AlertTriangle} onClick={() => navigate('/logs')}>
+      <KPICard title="Active Alerts" icon={AlertTriangle} onClick={() => navigate('/logs')} loading={loading}>
         <div className="flex items-baseline gap-2">
           <span className={`text-4xl font-bold font-mono ${stats.criticalAlerts > 0 ? 'text-nms-offline' : 'text-nms-online'}`}>
             {stats.criticalAlerts}
@@ -80,7 +85,7 @@ export function KPICards() {
       </KPICard>
 
       {/* Avg Latency */}
-      <KPICard title="Avg Latency" icon={Clock} onClick={() => navigate('/topology')}>
+      <KPICard title="Avg Latency" icon={Clock} onClick={() => navigate('/topology')} loading={loading}>
         <div className="flex items-baseline gap-1">
           <span className="text-4xl font-bold font-mono text-nms-online">{stats.avgLatency}</span>
           <span className="text-lg font-mono text-muted-foreground">ms</span>

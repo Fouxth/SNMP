@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { devices, Device } from '@/lib/mockData';
+import { useDevices } from '@/hooks/useDevices';
+import { Device } from '@/lib/types';
+import { pingDevice } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -87,35 +89,30 @@ function MetricBar({ value, max = 100 }: { value: number; max?: number }) {
 
 export function DeviceTable() {
   const navigate = useNavigate();
+  const { devices, loading } = useDevices();
   const [pingDialogOpen, setPingDialogOpen] = useState(false);
   const [rebootDialogOpen, setRebootDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [pingResult, setPingResult] = useState<{ status: 'idle' | 'pinging' | 'done', results: string[] }>({ status: 'idle', results: [] });
 
-  const handlePing = (device: Device) => {
+  const handlePing = async (device: Device) => {
     setSelectedDevice(device);
     setPingResult({ status: 'pinging', results: [] });
     setPingDialogOpen(true);
 
-    // Simulate ping
-    const results: string[] = [];
-    let count = 0;
-    const interval = setInterval(() => {
-      count++;
-      if (device.status === 'offline') {
-        results.push(`Request timed out.`);
-      } else {
-        const time = Math.floor(Math.random() * 5) + 1;
-        results.push(`Reply from ${device.ip}: bytes=32 time=${time}ms TTL=64`);
-      }
-      setPingResult({ status: 'pinging', results: [...results] });
-
-      if (count >= 4) {
-        clearInterval(interval);
-        setPingResult({ status: 'done', results: [...results] });
-      }
-    }, 500);
+    try {
+      const result = await pingDevice(device.id);
+      setPingResult({
+        status: 'done',
+        results: result.output
+      });
+    } catch {
+      setPingResult({
+        status: 'done',
+        results: ['Error: Failed to ping device']
+      });
+    }
   };
 
   const handleReboot = (device: Device) => {
@@ -145,7 +142,10 @@ export function DeviceTable() {
             <h3 className="text-lg font-semibold">Monitored Devices</h3>
             <p className="text-sm text-muted-foreground">{devices.length} devices in inventory</p>
           </div>
-          <Button variant="outline" onClick={() => navigate('/devices')}>View All</Button>
+          <div className="flex items-center gap-2">
+            {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+            <Button variant="outline" onClick={() => navigate('/devices')}>View All</Button>
+          </div>
         </div>
 
         <div className="overflow-x-auto scrollbar-thin">
@@ -163,8 +163,15 @@ export function DeviceTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {devices.length === 0 && !loading && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    No devices found. Click "Scan Network" to discover devices.
+                  </TableCell>
+                </TableRow>
+              )}
               {devices.map((device) => {
-                const Icon = deviceIcons[device.type];
+                const Icon = deviceIcons[device.type] || Server;
                 return (
                   <TableRow
                     key={device.id}
@@ -244,7 +251,7 @@ export function DeviceTable() {
           <div className="bg-black rounded-lg p-4 font-mono text-sm text-green-400 min-h-[150px]">
             <p className="text-muted-foreground mb-2">Pinging {selectedDevice?.ip} with 32 bytes of data:</p>
             {pingResult.results.map((result, i) => (
-              <p key={i} className={result.includes('timed out') ? 'text-red-400' : ''}>{result}</p>
+              <p key={i} className={result.includes('timed out') || result.includes('Error') ? 'text-red-400' : ''}>{result}</p>
             ))}
             {pingResult.status === 'pinging' && <Loader2 className="w-4 h-4 animate-spin mt-2" />}
             {pingResult.status === 'done' && (
@@ -278,7 +285,7 @@ export function DeviceTable() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {selectedDevice && (() => { const Icon = deviceIcons[selectedDevice.type]; return <Icon className="w-5 h-5" />; })()}
+              {selectedDevice && (() => { const Icon = deviceIcons[selectedDevice.type] || Server; return <Icon className="w-5 h-5" />; })()}
               {selectedDevice?.name}
             </DialogTitle>
             <DialogDescription>{selectedDevice?.vendor} • {selectedDevice?.type}</DialogDescription>

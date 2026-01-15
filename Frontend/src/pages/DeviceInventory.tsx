@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
-import { devices, Device } from '@/lib/mockData';
+import { useDevices } from '@/hooks/useDevices';
+import { Device } from '@/lib/types';
+import { addDevice, updateDevice, deleteDevice } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,7 +22,9 @@ import {
     Plus,
     Pencil,
     Trash2,
-    Search
+    Search,
+    RefreshCw,
+    Loader2
 } from 'lucide-react';
 import {
     Dialog,
@@ -63,67 +67,87 @@ function StatusBadge({ status }: { status: Device['status'] }) {
 }
 
 const DeviceInventory = () => {
-    const [deviceList, setDeviceList] = useState<Device[]>(devices);
+    const { devices, loading, refresh, scanNetwork } = useDevices();
     const [searchTerm, setSearchTerm] = useState('');
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [newDevice, setNewDevice] = useState<Partial<Device>>({
         name: '',
         ip: '',
         type: 'server',
         vendor: '',
-        status: 'online',
     });
 
-    const filteredDevices = deviceList.filter(device =>
+    const filteredDevices = devices.filter(device =>
         device.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         device.ip.includes(searchTerm) ||
         device.vendor.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleAddDevice = () => {
-        const device: Device = {
-            id: String(Date.now()),
-            name: newDevice.name || '',
-            ip: newDevice.ip || '',
-            type: newDevice.type as Device['type'] || 'server',
-            status: 'online',
-            uptime: '0d 0h 0m',
-            cpuLoad: Math.floor(Math.random() * 30) + 10,
-            memoryUsage: Math.floor(Math.random() * 40) + 20,
-            lastResponse: Math.floor(Math.random() * 3) + 1,
-            vendor: newDevice.vendor || 'Unknown',
-        };
-        setDeviceList([...deviceList, device]);
-        setIsAddDialogOpen(false);
-        setNewDevice({ name: '', ip: '', type: 'server', vendor: '', status: 'online' });
-        toast.success('Device added successfully', {
-            description: `${device.name} (${device.ip}) has been added to inventory.`
-        });
+    const handleAddDevice = async () => {
+        setIsSubmitting(true);
+        try {
+            await addDevice({
+                name: newDevice.name || '',
+                ip: newDevice.ip || '',
+                type: newDevice.type || 'server',
+                vendor: newDevice.vendor || 'Unknown',
+            });
+            setIsAddDialogOpen(false);
+            setNewDevice({ name: '', ip: '', type: 'server', vendor: '' });
+            await refresh();
+            toast.success('Device added successfully');
+        } catch {
+            toast.error('Failed to add device');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
-    const handleEditDevice = () => {
+    const handleEditDevice = async () => {
         if (!selectedDevice) return;
-        setDeviceList(deviceList.map(d =>
-            d.id === selectedDevice.id ? { ...d, ...newDevice } as Device : d
-        ));
-        setIsEditDialogOpen(false);
-        setSelectedDevice(null);
-        toast.success('Device updated', {
-            description: `${newDevice.name} has been updated.`
-        });
+        setIsSubmitting(true);
+        try {
+            await updateDevice(selectedDevice.id, {
+                name: newDevice.name || '',
+                ip: newDevice.ip || '',
+                type: newDevice.type || 'server',
+                vendor: newDevice.vendor || 'Unknown',
+            });
+            setIsEditDialogOpen(false);
+            setSelectedDevice(null);
+            await refresh();
+            toast.success('Device updated');
+        } catch {
+            toast.error('Failed to update device');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
-    const handleDeleteDevice = () => {
+    const handleDeleteDevice = async () => {
         if (!selectedDevice) return;
-        setDeviceList(deviceList.filter(d => d.id !== selectedDevice.id));
-        setIsDeleteDialogOpen(false);
-        toast.success('Device deleted', {
-            description: `${selectedDevice.name} has been removed from inventory.`
-        });
-        setSelectedDevice(null);
+        setIsSubmitting(true);
+        try {
+            await deleteDevice(selectedDevice.id);
+            setIsDeleteDialogOpen(false);
+            setSelectedDevice(null);
+            await refresh();
+            toast.success('Device deleted');
+        } catch {
+            toast.error('Failed to delete device');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleScanNetwork = async () => {
+        toast.info('Scanning network...');
+        await scanNetwork();
+        toast.success('Network scan completed');
     };
 
     const openEditDialog = (device: Device) => {
@@ -155,10 +179,16 @@ const DeviceInventory = () => {
                             <h1 className="text-2xl font-bold">Device Inventory</h1>
                             <p className="text-muted-foreground">Manage all monitored devices</p>
                         </div>
-                        <Button onClick={() => setIsAddDialogOpen(true)} className="gap-2">
-                            <Plus className="w-4 h-4" />
-                            Add Device
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={handleScanNetwork} disabled={loading}>
+                                {loading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                                Scan Network
+                            </Button>
+                            <Button onClick={() => setIsAddDialogOpen(true)} className="gap-2">
+                                <Plus className="w-4 h-4" />
+                                Add Device
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Search */}
@@ -187,8 +217,22 @@ const DeviceInventory = () => {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
+                                {loading && (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center py-8">
+                                            <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                {!loading && filteredDevices.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                            No devices found. Click "Scan Network" to discover devices.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
                                 {filteredDevices.map((device) => {
-                                    const Icon = deviceIcons[device.type];
+                                    const Icon = deviceIcons[device.type] || Server;
                                     return (
                                         <TableRow key={device.id} className="border-border">
                                             <TableCell>
@@ -291,7 +335,10 @@ const DeviceInventory = () => {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleAddDevice}>Add Device</Button>
+                        <Button onClick={handleAddDevice} disabled={isSubmitting}>
+                            {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Add Device
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -351,7 +398,10 @@ const DeviceInventory = () => {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
-                        <Button onClick={handleEditDevice}>Save Changes</Button>
+                        <Button onClick={handleEditDevice} disabled={isSubmitting}>
+                            {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Save Changes
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -367,7 +417,10 @@ const DeviceInventory = () => {
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
-                        <Button variant="destructive" onClick={handleDeleteDevice}>Delete</Button>
+                        <Button variant="destructive" onClick={handleDeleteDevice} disabled={isSubmitting}>
+                            {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Delete
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

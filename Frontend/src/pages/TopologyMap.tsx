@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Header } from '@/components/dashboard/Header';
-import { devices } from '@/lib/mockData';
+import { useDevices } from '@/hooks/useDevices';
+import { Device } from '@/lib/types';
 import {
     Router,
     Server,
@@ -10,7 +11,8 @@ import {
     ZoomIn,
     ZoomOut,
     Maximize2,
-    RefreshCw
+    RefreshCw,
+    Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -36,25 +38,29 @@ const deviceIcons: Record<string, React.ElementType> = {
 };
 
 // Create network topology from devices
-const createTopology = (): NetworkNode[] => {
-    return [
-        { id: '7', name: 'fw-edge-01', ip: '10.0.0.1', type: 'firewall', status: 'online', x: 400, y: 50, connections: ['1'] },
-        { id: '1', name: 'core-router-01', ip: '10.0.1.1', type: 'router', status: 'online', x: 400, y: 150, connections: ['2', '3'] },
-        { id: '2', name: 'dist-switch-01', ip: '10.0.1.10', type: 'switch', status: 'online', x: 250, y: 250, connections: ['8', '4', '5'] },
-        { id: '3', name: 'dist-switch-02', ip: '10.0.1.11', type: 'switch', status: 'warning', x: 550, y: 250, connections: ['9', '6', '10', '11'] },
-        { id: '4', name: 'web-server-01', ip: '10.0.2.100', type: 'server', status: 'online', x: 150, y: 380, connections: [] },
-        { id: '5', name: 'web-server-02', ip: '10.0.2.101', type: 'server', status: 'online', x: 250, y: 380, connections: [] },
-        { id: '6', name: 'db-server-01', ip: '10.0.2.200', type: 'server', status: 'online', x: 450, y: 380, connections: [] },
-        { id: '8', name: 'access-switch-01', ip: '10.0.3.1', type: 'switch', status: 'online', x: 100, y: 250, connections: [] },
-        { id: '9', name: 'access-switch-02', ip: '10.0.3.2', type: 'switch', status: 'offline', x: 650, y: 250, connections: [] },
-        { id: '10', name: 'wifi-ap-01', ip: '10.0.4.10', type: 'ap', status: 'online', x: 550, y: 380, connections: [] },
-        { id: '11', name: 'wifi-ap-02', ip: '10.0.4.11', type: 'ap', status: 'online', x: 650, y: 380, connections: [] },
-        { id: '12', name: 'backup-server-01', ip: '10.0.2.250', type: 'server', status: 'online', x: 350, y: 380, connections: [] },
+const createTopology = (devices: Device[]): NetworkNode[] => {
+    const positions = [
+        { x: 400, y: 50 }, { x: 400, y: 150 }, { x: 250, y: 250 },
+        { x: 550, y: 250 }, { x: 150, y: 380 }, { x: 250, y: 380 },
+        { x: 450, y: 380 }, { x: 100, y: 250 }, { x: 650, y: 250 },
+        { x: 550, y: 380 }, { x: 650, y: 380 }, { x: 350, y: 380 },
     ];
+
+    return devices.map((device, index) => ({
+        id: device.id,
+        name: device.name,
+        ip: device.ip,
+        type: device.type,
+        status: device.status,
+        x: positions[index % positions.length].x,
+        y: positions[index % positions.length].y,
+        connections: index > 0 ? [devices[Math.max(0, index - 1)].id] : [],
+    }));
 };
 
 const TopologyMap = () => {
-    const [nodes] = useState<NetworkNode[]>(createTopology());
+    const { devices, loading, refresh } = useDevices();
+    const nodes = useMemo(() => createTopology(devices), [devices]);
     const [zoom, setZoom] = useState(1);
     const [selectedNode, setSelectedNode] = useState<NetworkNode | null>(null);
 
@@ -64,10 +70,9 @@ const TopologyMap = () => {
         setZoom(1);
         toast.info('Topology view reset');
     };
-    const handleRefresh = () => {
-        toast.success('Topology refreshed', {
-            description: 'Network topology data has been updated.'
-        });
+    const handleRefresh = async () => {
+        await refresh();
+        toast.success('Topology refreshed');
     };
 
     const getNodeColor = (status: string) => {

@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { Search, Bell, CheckCircle, ChevronDown, LogOut, User, Settings } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { getDeviceStats, alerts, devices } from '@/lib/mockData';
+import { useDevices } from '@/hooks/useDevices';
+import { useAlerts } from '@/hooks/useAlerts';
+import { Device } from '@/lib/types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,10 +22,11 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export function Header() {
-  const stats = getDeviceStats();
+  const { devices, stats } = useDevices();
+  const { alerts, criticalCount } = useAlerts();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<typeof devices>([]);
+  const [searchResults, setSearchResults] = useState<Device[]>([]);
   const [showResults, setShowResults] = useState(false);
   const systemHealthy = stats.offline === 0 && stats.warning === 0;
 
@@ -117,9 +120,9 @@ export function Header() {
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="w-5 h-5" />
-              {stats.criticalAlerts > 0 && (
+              {criticalCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-nms-offline text-xs flex items-center justify-center rounded-full font-medium">
-                  {stats.criticalAlerts}
+                  {criticalCount}
                 </span>
               )}
             </Button>
@@ -129,7 +132,7 @@ export function Header() {
               <h4 className="font-semibold">Notifications</h4>
             </div>
             <div className="max-h-64 overflow-auto">
-              {alerts.map(alert => (
+              {alerts.slice(0, 10).map(alert => (
                 <div
                   key={alert.id}
                   className={cn(
@@ -138,7 +141,7 @@ export function Header() {
                   )}
                   onClick={() => {
                     navigate('/logs');
-                    toast.info(`Viewing alert for ${alert.device}`);
+                    toast.info(`Viewing alert for ${alert.source}`);
                   }}
                 >
                   <p className={cn(
@@ -149,10 +152,15 @@ export function Header() {
                     {alert.message}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {alert.device} • {alert.timestamp}
+                    {alert.source} • {alert.timestamp}
                   </p>
                 </div>
               ))}
+              {alerts.length === 0 && (
+                <div className="p-4 text-center text-muted-foreground text-sm">
+                  No alerts
+                </div>
+              )}
             </div>
             <div className="p-2 border-t border-border">
               <Button variant="ghost" className="w-full text-sm" onClick={() => navigate('/logs')}>

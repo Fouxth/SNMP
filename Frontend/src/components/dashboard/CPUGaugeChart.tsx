@@ -1,39 +1,44 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { getTopCpuDevices } from '@/lib/mockData';
-import { Cpu } from 'lucide-react';
+import { useDevices, getTopCpuDevices } from '@/hooks/useDevices';
+import { Cpu, Loader2 } from 'lucide-react';
 
 export function CPUGaugeChart() {
-  const topDevices = getTopCpuDevices();
-  
+  const { devices, loading } = useDevices();
+  const topDevices = getTopCpuDevices(devices, 5);
+
   const getStatusColor = (cpu: number) => {
     if (cpu >= 80) return 'hsl(0, 84%, 60%)';
     if (cpu >= 60) return 'hsl(38, 92%, 50%)';
     return 'hsl(142, 76%, 46%)';
   };
-  
+
   const getStatusClass = (cpu: number) => {
     if (cpu >= 80) return 'text-nms-offline';
     if (cpu >= 60) return 'text-nms-warning';
     return 'text-nms-online';
   };
-  
+
   return (
     <div className="nms-card-glow p-5 h-full animate-fade-in">
       <div className="flex items-center gap-2 mb-4">
         <Cpu className="w-5 h-5 text-primary" />
         <h3 className="text-lg font-semibold">Top CPU Usage</h3>
+        {loading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto" />}
       </div>
-      
+
       <div className="space-y-4">
+        {topDevices.length === 0 && !loading && (
+          <p className="text-sm text-muted-foreground text-center py-4">No devices found</p>
+        )}
         {topDevices.map((device, index) => {
           const gaugeData = [
             { value: device.cpuLoad },
             { value: 100 - device.cpuLoad },
           ];
-          
+
           return (
-            <div 
-              key={device.id} 
+            <div
+              key={device.id}
               className="flex items-center gap-3"
               style={{ animationDelay: `${index * 100}ms` }}
             >
@@ -61,7 +66,7 @@ export function CPUGaugeChart() {
                   {device.cpuLoad}
                 </span>
               </div>
-              
+
               {/* Device Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
